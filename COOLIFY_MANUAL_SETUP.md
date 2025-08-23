@@ -56,7 +56,7 @@ WORKERS=2
 
 **Security & Authentication:**
 ```bash
-SECRET_KEY=gviG6vChjyUhhTwkYYTRlTVb1nPMzTwgxz0-xX53BMI
+SECRET_KEY=your-secret-key-here
 ```
 
 **CORS Configuration:**

@@ -14,7 +14,7 @@ PORT=8000
 WORKERS=2
 
 # Security
-SECRET_KEY=gviG6vChjyUhhTwkYYTRlTVb1nPMzTwgxz0-xX53BMI
+SECRET_KEY=your-secret-key-here
 
 # CORS - Specific to Flowise domain
 ALLOWED_ORIGINS=https://flowise.software.vision,https://mcp-mevzuat.dosya.ai
