@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     api_timeout: float = Field(default=30.0, env="API_TIMEOUT")
     
     # CORS Configuration
-    allowed_origins: str = Field(default="*", env="ALLOWED_ORIGINS")
+    allowed_origins: str = Field(default="https://flowise.software.vision,https://mcp-mevzuat.dosya.ai", env="ALLOWED_ORIGINS")
     
     # Rate Limiting
     rate_limit_per_minute: int = Field(default=60, env="RATE_LIMIT_PER_MINUTE")
