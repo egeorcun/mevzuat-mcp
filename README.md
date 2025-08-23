@@ -1,6 +1,14 @@
-# Mevzuat MCP: Adalet Bakanlığı Mevzuat Bilgi Sistemi için MCP Sunucusu
+# Mevzuat API Server: Türk Mevzuatı için RESTful API
 
-Bu proje, Adalet Bakanlığı'na ait Mevzuat Bilgi Sistemi'ne (`mevzuat.gov.tr`) erişimi kolaylaştıran bir [FastMCP](https://gofastmcp.com/) sunucusu oluşturur. Bu sayede, Mevzuat Bilgi Sistemi'nden mevzuat arama, madde listelerini getirme ve madde içeriklerini Markdown formatında alma işlemleri, Model Context Protocol (MCP) destekleyen LLM (Büyük Dil Modeli) uygulamaları (örneğin Claude Desktop veya [5ire](https://5ire.app)) ve diğer istemciler tarafından araç (tool) olarak kullanılabilir hale gelir.
+Bu proje, Adalet Bakanlığı'na ait Mevzuat Bilgi Sistemi'ne (`mevzuat.gov.tr`) erişimi kolaylaştıran hem **MCP sunucusu** hem de **RESTful Web API** sağlar. Bu sayede, Mevzuat Bilgi Sistemi'nden mevzuat arama, madde listelerini getirme ve madde içeriklerini Markdown formatında alma işlemleri, Model Context Protocol (MCP) destekleyen LLM uygulamaları (Claude Desktop, [5ire](https://5ire.app)) ve Flowise gibi web tabanlı AI araçları tarafından kullanılabilir hale gelir.
+
+## 🌟 Yeni: Web API + Coolify Deployment
+
+Bu sürümde eklenenler:
+- **FastAPI tabanlı RESTful Web API** - Flowise entegrasyonu için
+- **Docker containerization** - Kolay deployment
+- **Coolify deployment desteği** - One-click hosting
+- **Production-ready konfigürasyon** - Environment variables, logging, health checks
 
 ![örnek](./ornek.png)
 
@@ -78,6 +86,65 @@ Bu FastMCP sunucusu LLM modelleri için aşağıdaki araçları sunar:
 * **`get_mevzuat_article_content`**: Belirli bir mevzuat maddesinin tam metnini temizlenmiş Markdown formatında getirir.
     * **Parametreler**: `mevzuat_id`, `madde_id` (madde ağacından elde edilen madde ID'si).
     * **Döndürdüğü Değer**: `MevzuatArticleContent` (maddenin Markdown içeriği, metadata vb. içerir)
+
+## 🚀 Web API Deployment (Coolify + Flowise)
+
+### Hızlı Başlangıç
+
+1. **Coolify'da Deploy**
+   ```bash
+   # Repository'yi Coolify'a ekleyin
+   # Environment variables'ları ayarlayın (DEPLOYMENT.md'ye bakın)
+   # Deploy butonuna basın
+   ```
+
+2. **Flowise ile Entegrasyon**
+   ```javascript
+   // HTTP Request node ile API'ye bağlanın
+   {
+     "url": "https://your-mevzuat-api.com/api/search",
+     "method": "POST",
+     "body": {"phrase": "{{$input}}", "page_size": 5}
+   }
+   ```
+
+### Detaylı Rehberler
+
+- 📖 [**DEPLOYMENT.md**](./DEPLOYMENT.md) - Coolify deployment rehberi
+- 🔗 [**FLOWISE_INTEGRATION.md**](./FLOWISE_INTEGRATION.md) - Flowise entegrasyon rehberi
+
+## 🐳 Docker ile Yerel Test
+
+```bash
+# Repository'yi klonlayın
+git clone <repository-url>
+cd mevzuat-mcp
+
+# Docker ile çalıştırın
+docker-compose up -d
+
+# API'yi test edin
+curl http://localhost:8000/health
+```
+
+## 🔧 API Endpoints
+
+| Endpoint | Method | Açıklama |
+|----------|--------|----------|
+| `/health` | GET | Sistem durumu |
+| `/api/search` | POST | Mevzuat arama |
+| `/api/legislation/{id}/content` | GET | Tam mevzuat içeriği |
+| `/api/legislation/{id}/structure` | GET | Mevzuat yapısı |
+| `/api/types` | GET | Mevzuat türleri |
+
+## 📋 MCP Client Desteği
+
+MCP protokolü ile kullanmak için aşağıdaki komut:
+
+```bash
+# MCP server olarak çalıştır
+python mevzuat_mcp_server.py
+```
 
 📜 **Lisans**
 
