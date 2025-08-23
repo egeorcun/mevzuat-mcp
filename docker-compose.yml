@@ -15,7 +15,7 @@ services:
     expose:
       - "8000"
     
-    # Environment variables - set these in Coolify dashboard
+    # Environment variables - minimal configuration
     environment:
       # Core settings
       - HOST=0.0.0.0
@@ -23,7 +23,7 @@ services:
       - ENVIRONMENT=production
       - WORKERS=2
       
-      # Security
+      # Security - set this in Coolify environment variables
       - SECRET_KEY=${SECRET_KEY:-your-secret-key-here}
       
       # CORS - Flowise integration
@@ -33,15 +33,6 @@ services:
       - API_TIMEOUT=30.0
       - LOG_LEVEL=INFO
       - RATE_LIMIT_PER_MINUTE=120
-      
-      # Coolify specific
-      - COOLIFY_BRANCH=main
-      - COOLIFY_RESOURCE_UUID=${COOLIFY_RESOURCE_UUID}
-      - COOLIFY_CONTAINER_NAME=${COOLIFY_CONTAINER_NAME}
-      - SERVICE_URL_MEVZUAT-API=https://mcp-mevzuat.dosya.ai
-      - SERVICE_FQDN_MEVZUAT-API=mcp-mevzuat.dosya.ai
-      - COOLIFY_URL=https://mcp-mevzuat.dosya.ai
-      - COOLIFY_FQDN=mcp-mevzuat.dosya.ai
     
     # Health check
     healthcheck:
@@ -75,29 +66,15 @@ services:
         max-size: "10m"
         max-file: "3"
     
-    # Labels for Coolify management
+    # Labels - Coolify will auto-generate these
     labels:
       - "coolify.managed=true"
-      - "coolify.name=mevzuat-api"
-      - "coolify.type=application"
-      - "traefik.enable=true"
-      - "traefik.http.middlewares.gzip.compress=true"
-      - "traefik.http.middlewares.redirect-to-https.redirectscheme.scheme=https"
-      - "traefik.http.routers.http-0-${COOLIFY_RESOURCE_UUID}-mevzuat-api.entryPoints=http"
-      - "traefik.http.routers.http-0-${COOLIFY_RESOURCE_UUID}-mevzuat-api.middlewares=redirect-to-https"
-      - "traefik.http.routers.http-0-${COOLIFY_RESOURCE_UUID}-mevzuat-api.rule=Host(`mcp-mevzuat.dosya.ai`) && PathPrefix(`/`)"
-      - "traefik.http.routers.https-0-${COOLIFY_RESOURCE_UUID}-mevzuat-api.entryPoints=https"
-      - "traefik.http.routers.https-0-${COOLIFY_RESOURCE_UUID}-mevzuat-api.middlewares=gzip"
-      - "traefik.http.routers.https-0-${COOLIFY_RESOURCE_UUID}-mevzuat-api.rule=Host(`mcp-mevzuat.dosya.ai`) && PathPrefix(`/`)"
-      - "traefik.http.routers.https-0-${COOLIFY_RESOURCE_UUID}-mevzuat-api.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.https-0-${COOLIFY_RESOURCE_UUID}-mevzuat-api.tls=true"
 
 # Named volumes
 volumes:
   mevzuat_logs:
     driver: local
 
-# Networks
+# Networks - Coolify will auto-generate these
 networks:
   default:
-    name: coolify-network
