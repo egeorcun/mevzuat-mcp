@@ -29,7 +29,8 @@ FROM python:3.11-slim
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1
+    PIP_DISABLE_PIP_VERSION_CHECK=1 \
+    MCP_API_KEY=your-secret-api-key-here
 
 # Create non-root user for security
 RUN groupadd -r appuser && useradd -r -g appuser appuser
