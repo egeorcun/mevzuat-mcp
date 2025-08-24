@@ -237,6 +237,16 @@ async def health_check():
         "timestamp": asyncio.get_event_loop().time()
     }
 
+@app.get("/mcp")
+async def mcp_get_endpoint():
+    """GET endpoint for MCP - returns basic info"""
+    return {
+        "message": "Mevzuat MCP Web Server",
+        "version": "1.0.0",
+        "protocol": "MCP",
+        "endpoint": "POST /mcp for MCP requests"
+    }
+
 @app.post("/mcp")
 async def mcp_endpoint(
     request: Request,
