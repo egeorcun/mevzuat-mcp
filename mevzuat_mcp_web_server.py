@@ -300,6 +300,10 @@ async def mcp_endpoint(
             result = await handle_list_tools(mcp_request)
             logger.info(f"Tools list response: {len(result.result.get('tools', []))} tools")
             return result
+        elif mcp_request.method == "listActions":
+            result = await handle_list_actions(mcp_request)
+            logger.info(f"ListActions response: {len(result.result.get('actions', []))} actions")
+            return result
         elif mcp_request.method == "tools/call":
             return await handle_call_tool(mcp_request)
         elif mcp_request.method == "initialize":
@@ -404,6 +408,34 @@ async def handle_call_tool(request: MCPRequest) -> MCPResponse:
             error={
                 "code": -32603,
                 "message": f"Tool execution error: {str(e)}"
+            }
+        )
+
+async def handle_list_actions(request: MCPRequest) -> MCPResponse:
+    """Handle Flowise listActions request"""
+    try:
+        actions = []
+        for tool_name, tool_def in MCP_TOOLS.items():
+            actions.append({
+                "label": tool_def["description"],
+                "name": tool_def["name"],
+                "type": "string",
+                "required": True,
+                "description": tool_def["description"]
+            })
+        
+        logger.info(f"Returning {len(actions)} actions for Flowise")
+        return MCPResponse(
+            id=request.id,
+            result={"actions": actions}
+        )
+    except Exception as e:
+        logger.error(f"Error listing actions: {e}")
+        return MCPResponse(
+            id=request.id,
+            error={
+                "code": -32603,
+                "message": str(e)
             }
         )
 
