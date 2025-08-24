@@ -1,70 +1,45 @@
-# Dockerfile for Mevzuat MCP Server
-# Multi-stage build for optimized production image
+# -------- BASE IMAGE (Python 3.11 with dependencies) ----------------------------
+FROM python:3.11-slim
 
-# Build stage
-FROM python:3.11-slim as builder
-
-# Set working directory
+# -------- Runtime setup ----------------------------------------------------
 WORKDIR /app
 
-# Install system dependencies for building
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install Python dependencies
-COPY requirements.txt .
-COPY pyproject.toml .
+# Copy dependency manifests first for layer-cache
+COPY requirements.txt pyproject.toml* ./
 
 # Install Python dependencies
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r requirements.txt && \
-    pip install --no-cache-dir uvicorn[standard] gunicorn
+    pip install --no-cache-dir -r requirements.txt
 
-# Production stage
-FROM python:3.11-slim
+# Cache buster - force rebuild with timestamp
+ARG CACHE_BUST=1
+RUN echo "Cache bust: $CACHE_BUST"
 
-# Set environment variables
-ENV PYTHONUNBUFFERED=1 \
-    PYTHONDONTWRITEBYTECODE=1 \
-    PIP_NO_CACHE_DIR=1 \
-    PIP_DISABLE_PIP_VERSION_CHECK=1 \
-    MCP_API_KEY=your-secret-api-key-here
-
-# Create non-root user for security
-RUN groupadd -r appuser && useradd -r -g appuser appuser
-
-# Set working directory
-WORKDIR /app
-
-# Install runtime dependencies
-RUN apt-get update && apt-get install -y \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
-# Copy Python packages from builder stage
-COPY --from=builder /usr/local/lib/python3.11/site-packages /usr/local/lib/python3.11/site-packages
-COPY --from=builder /usr/local/bin /usr/local/bin
-
-# Copy application code
+# Copy application source
 COPY . .
 
 # Create logs directory
-RUN mkdir -p logs && chown -R appuser:appuser logs
+RUN mkdir -p logs
 
-# Change ownership of app directory
-RUN chown -R appuser:appuser /app
+# -------- Environment ------------------------------------------------------
+ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
+ENV HOST=0.0.0.0
+ENV LOG_LEVEL=info
+ENV DEBUG=false
+ENV MCP_API_KEY=your-secret-api-key-here
 
-# Switch to non-root user
-USER appuser
+# -------- Health check -----------------------------------------------------
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+  CMD python -c "import httpx, os, sys; r=httpx.get(f'http://localhost:{os.getenv(\"PORT\",\"8000\")}/health'); sys.exit(0 if r.status_code==200 else 1)"
 
-# Expose port
 EXPOSE 8000
 
-# Health check
-HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
-
-# Default command - use MCP web server
+# -------- Entrypoint -------------------------------------------------------
 CMD ["python3", "mevzuat_mcp_web_server.py"]

@@ -1,150 +1,113 @@
-# mevzuat_mcp_web_server.py
 """
-Web MCP Server for Mevzuat API - exposes MCP protocol over HTTP
-Similar to yargi-mcp implementation for Flowise integration
+Mevzuat MCP Web Server - Turkish Legislation MCP Server
+
+This module provides a comprehensive MCP server for Turkish legislation
+with HTTP API support, authentication, and Flowise compatibility.
+
+Features:
+- MCP Protocol over HTTP
+- Bearer token authentication
+- CORS support for Flowise
+- Comprehensive logging
+- Health checks
+- Tool discovery endpoints
 """
 
-import asyncio
-import logging
 import os
+import logging
 import json
+import time
+from datetime import datetime
+from typing import Dict, List, Any, Optional, Union
 from contextlib import asynccontextmanager
-from typing import Optional, List, Dict, Any, Union
 
-from fastapi import FastAPI, HTTPException, Request, Response, Depends, Header
+from fastapi import FastAPI, Request, Response, Depends, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, StreamingResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
+import uvicorn
 
-# Import configuration
-from config import Settings, get_settings
+# Import our existing client and models
+from mevzuat_client import MevzuatApiClient, MevzuatSearchRequest
+from mevzuat_models import MevzuatDocument, MevzuatSearchResult, MevzuatArticleNode
 
-# Import our existing models and client
-from mevzuat_client import MevzuatApiClient
-from mevzuat_models import (
-    MevzuatSearchRequest, MevzuatSearchResult,
-    MevzuatTurEnum, SortFieldEnum, SortDirectionEnum,
-    MevzuatArticleNode, MevzuatArticleContent,
-    MevzuatDocument
-)
+# ============================================================================
+# LOGGING CONFIGURATION
+# ============================================================================
 
-# Configure logging
+# Create logs directory
 LOG_DIRECTORY = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logs")
 if not os.path.exists(LOG_DIRECTORY):
     os.makedirs(LOG_DIRECTORY)
 
-LOG_FILE_PATH = os.path.join(LOG_DIRECTORY, "mcp_web_server.log")
+# Configure logging
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler(LOG_FILE_PATH, mode='a', encoding='utf-8'),
+        logging.FileHandler(os.path.join(LOG_DIRECTORY, "mevzuat_mcp.log"), encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
-logging.getLogger("httpx").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
-# Global client instance
-mevzuat_client: Optional[MevzuatApiClient] = None
+# ============================================================================
+# CONFIGURATION
+# ============================================================================
 
 # Security configuration
 API_KEY = os.getenv("MCP_API_KEY", "your-secret-api-key-here")
 FLOWISE_ORIGIN = "https://flowise.software.vision"
 
-# HTTP Bearer token security
-security = HTTPBearer()
+# Server configuration
+HOST = os.getenv("HOST", "0.0.0.0")
+PORT = int(os.getenv("PORT", "8000"))
+DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """
-    Application lifespan manager - handles startup and shutdown events
-    """
-    global mevzuat_client
-    
-    # Startup
-    settings = get_settings()
-    logger.info("Starting Mevzuat MCP Web Server...")
-    logger.info(f"Environment: {settings.environment}")
-    logger.info(f"Debug mode: {settings.debug}")
-    logger.info(f"API Key configured: {'Yes' if API_KEY != 'your-secret-api-key-here' else 'No (using default)'}")
-    
-    mevzuat_client = MevzuatApiClient(timeout=settings.api_timeout)
-    
-    yield
-    
-    # Shutdown
-    logger.info("Shutting down Mevzuat MCP Web Server...")
-    if mevzuat_client:
-        await mevzuat_client.close()
+# CORS configuration
+ALLOWED_ORIGINS = os.getenv("ALLOWED_ORIGINS", FLOWISE_ORIGIN).split(",")
 
-# Get settings for app configuration
-settings = get_settings()
+# ============================================================================
+# MODELS
+# ============================================================================
 
-# Create FastAPI app with lifespan
-app = FastAPI(
-    title="Mevzuat MCP Web Server",
-    description="Web MCP Server for Turkish Legislation Search and Content Retrieval",
-    version="1.0.0",
-    docs_url="/docs" if settings.debug else None,
-    redoc_url="/redoc" if settings.debug else None,
-    debug=settings.debug,
-    lifespan=lifespan
-)
-
-# Add CORS middleware for web client access - only allow Flowise
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[FLOWISE_ORIGIN],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-# Security dependency
-async def verify_api_key(
-    authorization: HTTPAuthorizationCredentials = Depends(security),
-    origin: Optional[str] = Header(None)
-) -> bool:
-    """
-    Verify API key and origin for security
-    """
-    # Check API key
-    if authorization.credentials != API_KEY:
-        logger.warning(f"Invalid API key attempt from origin: {origin}")
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid API key"
-        )
-    
-    # Check origin (allow Flowise or None for MCP clients)
-    if origin and origin != FLOWISE_ORIGIN:
-        logger.warning(f"Unauthorized origin attempt: {origin}")
-        raise HTTPException(
-            status_code=403,
-            detail="Unauthorized origin"
-        )
-    
-    logger.info(f"Authenticated request from: {origin or 'MCP Client'}")
-    return True
-
-# MCP Protocol Models
 class MCPRequest(BaseModel):
-    """Base MCP request model"""
+    """MCP JSON-RPC request model"""
     jsonrpc: str = "2.0"
-    id: Optional[Union[str, int]] = None
+    id: Union[int, str]
     method: str
     params: Optional[Dict[str, Any]] = None
 
 class MCPResponse(BaseModel):
-    """Base MCP response model"""
+    """MCP JSON-RPC response model"""
     jsonrpc: str = "2.0"
-    id: Optional[Union[str, int]] = None
+    id: Union[int, str]
     result: Optional[Dict[str, Any]] = None
     error: Optional[Dict[str, Any]] = None
 
-# MCP Tool Definitions
+class HealthCheck(BaseModel):
+    """Health check response model"""
+    status: str
+    timestamp: datetime
+    uptime_seconds: float
+    version: str
+    tools_count: int
+    mcp_endpoint: str
+
+class ServerInfo(BaseModel):
+    """Server information model"""
+    name: str
+    version: str
+    description: str
+    tools_count: int
+    mcp_endpoint: str
+    api_docs: str
+
+# ============================================================================
+# MCP TOOLS DEFINITION
+# ============================================================================
+
 MCP_TOOLS = {
     "search_documents": {
         "name": "search_documents",
@@ -222,20 +185,136 @@ MCP_TOOLS = {
     }
 }
 
+# ============================================================================
+# CLIENT INITIALIZATION
+# ============================================================================
+
+# Initialize Mevzuat API client
+mevzuat_client = MevzuatApiClient()
+
+# ============================================================================
+# AUTHENTICATION
+# ============================================================================
+
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+
+security = HTTPBearer()
+
+async def verify_api_key(
+    authorization: HTTPAuthorizationCredentials = Depends(security),
+    origin: Optional[str] = Header(None)
+) -> bool:
+    """
+    Verify API key and origin for security
+    """
+    # Check API key
+    if authorization.credentials != API_KEY:
+        logger.warning(f"Invalid API key attempt from origin: {origin}")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key"
+        )
+    
+    # Check origin (allow Flowise or None for MCP clients)
+    if origin and origin != FLOWISE_ORIGIN:
+        logger.warning(f"Unauthorized origin attempt: {origin}")
+        raise HTTPException(
+            status_code=403,
+            detail="Unauthorized origin"
+        )
+    
+    logger.info(f"Authenticated request from: {origin or 'MCP Client'}")
+    return True
+
+# ============================================================================
+# LIFECYCLE MANAGEMENT
+# ============================================================================
+
+SERVER_START_TIME = datetime.now()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Application lifespan manager"""
+    # Startup
+    logger.info("Starting Mevzuat MCP Web Server...")
+    logger.info(f"Environment: {'development' if DEBUG else 'production'}")
+    logger.info(f"Debug mode: {DEBUG}")
+    logger.info(f"API Key configured: {'Yes' if API_KEY != 'your-secret-api-key-here' else 'No'}")
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down Mevzuat MCP Web Server...")
+
+# ============================================================================
+# FASTAPI APPLICATION
+# ============================================================================
+
+app = FastAPI(
+    title="Mevzuat MCP Web Server",
+    description="""
+    Turkish Legislation MCP Server with HTTP API support.
+    
+    This server provides access to Turkish legislation through:
+    • Mevzuat.gov.tr API integration
+    • MCP Protocol over HTTP
+    • Flowise compatibility
+    • Bearer token authentication
+    
+    Available tools:
+    • search_documents - Search Turkish legislation
+    • get_article_tree - Get legislation table of contents
+    • get_article_content - Get specific article content
+    • get_document_content - Get full legislation content
+    """,
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Add CORS middleware for web client access - only allow Flowise
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=ALLOWED_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# ============================================================================
+# ENDPOINTS
+# ============================================================================
+
 @app.get("/")
 async def root():
-    """Root endpoint"""
-    return {"message": "Mevzuat MCP Web Server", "version": "1.0.0", "secure": True}
+    """Root endpoint with server information"""
+    return {
+        "message": "Mevzuat MCP Web Server",
+        "version": "1.0.0",
+        "description": "Turkish Legislation MCP Server",
+        "endpoints": {
+            "mcp": "POST /mcp - MCP Protocol endpoint",
+            "tools": "GET /mcp/tools - List available tools",
+            "actions": "GET /mcp/actions - List available actions (Flowise)",
+            "health": "GET /health - Health check",
+            "docs": "GET /docs - API documentation"
+        },
+        "secure": True,
+        "timestamp": datetime.now().isoformat()
+    }
 
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "message": "Mevzuat MCP Web Server is running",
-        "secure": True,
-        "timestamp": asyncio.get_event_loop().time()
-    }
+    uptime = (datetime.now() - SERVER_START_TIME).total_seconds()
+    
+    return HealthCheck(
+        status="healthy",
+        timestamp=datetime.now(),
+        uptime_seconds=uptime,
+        version="1.0.0",
+        tools_count=len(MCP_TOOLS),
+        mcp_endpoint="/mcp"
+    )
 
 @app.get("/mcp")
 async def mcp_get_endpoint():
@@ -244,7 +323,9 @@ async def mcp_get_endpoint():
         "message": "Mevzuat MCP Web Server",
         "version": "1.0.0",
         "protocol": "MCP",
-        "endpoint": "POST /mcp for MCP requests"
+        "endpoint": "POST /mcp for MCP requests",
+        "tools_count": len(MCP_TOOLS),
+        "timestamp": datetime.now().isoformat()
     }
 
 @app.get("/mcp/tools")
@@ -330,6 +411,10 @@ async def mcp_endpoint(
             }
         )
 
+# ============================================================================
+# MCP HANDLERS
+# ============================================================================
+
 async def handle_initialize(request: MCPRequest) -> MCPResponse:
     """Handle MCP initialize request"""
     return MCPResponse(
@@ -362,6 +447,34 @@ async def handle_list_tools(request: MCPRequest) -> MCPResponse:
         id=request.id,
         result={"tools": tools}
     )
+
+async def handle_list_actions(request: MCPRequest) -> MCPResponse:
+    """Handle Flowise listActions request"""
+    try:
+        actions = []
+        for tool_name, tool_def in MCP_TOOLS.items():
+            actions.append({
+                "label": tool_def["description"],
+                "name": tool_def["name"],
+                "type": "string",
+                "required": True,
+                "description": tool_def["description"]
+            })
+        
+        logger.info(f"Returning {len(actions)} actions for Flowise")
+        return MCPResponse(
+            id=request.id,
+            result={"actions": actions}
+        )
+    except Exception as e:
+        logger.error(f"Error listing actions: {e}")
+        return MCPResponse(
+            id=request.id,
+            error={
+                "code": -32603,
+                "message": str(e)
+            }
+        )
 
 async def handle_call_tool(request: MCPRequest) -> MCPResponse:
     """Handle MCP tools/call request"""
@@ -411,35 +524,10 @@ async def handle_call_tool(request: MCPRequest) -> MCPResponse:
             }
         )
 
-async def handle_list_actions(request: MCPRequest) -> MCPResponse:
-    """Handle Flowise listActions request"""
-    try:
-        actions = []
-        for tool_name, tool_def in MCP_TOOLS.items():
-            actions.append({
-                "label": tool_def["description"],
-                "name": tool_def["name"],
-                "type": "string",
-                "required": True,
-                "description": tool_def["description"]
-            })
-        
-        logger.info(f"Returning {len(actions)} actions for Flowise")
-        return MCPResponse(
-            id=request.id,
-            result={"actions": actions}
-        )
-    except Exception as e:
-        logger.error(f"Error listing actions: {e}")
-        return MCPResponse(
-            id=request.id,
-            error={
-                "code": -32603,
-                "message": str(e)
-            }
-        )
+# ============================================================================
+# TOOL IMPLEMENTATIONS
+# ============================================================================
 
-# Tool implementations
 async def search_documents_tool(arguments: Dict[str, Any]) -> Dict[str, Any]:
     """Implementation of search_documents tool"""
     try:
@@ -492,7 +580,7 @@ async def get_article_content_tool(arguments: Dict[str, Any]) -> Dict[str, Any]:
             return {"error": "mevzuat_id and madde_id are required"}
         
         result = await mevzuat_client.get_article_content(mevzuat_id, madde_id)
-        return result.model_dump()
+        return {"content": result}
         
     except Exception as e:
         logger.error(f"Error in get_article_content_tool: {e}")
@@ -506,12 +594,26 @@ async def get_document_content_tool(arguments: Dict[str, Any]) -> Dict[str, Any]
             return {"error": "mevzuat_id is required"}
         
         result = await mevzuat_client.get_document_content(mevzuat_id)
-        return result.model_dump()
+        return {"content": result}
         
     except Exception as e:
         logger.error(f"Error in get_document_content_tool: {e}")
         return {"error": str(e)}
 
+# ============================================================================
+# MAIN EXECUTION
+# ============================================================================
+
 if __name__ == "__main__":
-    import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    logger.info("Starting Mevzuat MCP Web Server...")
+    logger.info(f"Environment: {'development' if DEBUG else 'production'}")
+    logger.info(f"Debug mode: {DEBUG}")
+    logger.info(f"API Key configured: {'Yes' if API_KEY != 'your-secret-api-key-here' else 'No'}")
+    
+    uvicorn.run(
+        "mevzuat_mcp_web_server:app",
+        host=HOST,
+        port=PORT,
+        reload=DEBUG,
+        log_level="info" if not DEBUG else "debug"
+    )
