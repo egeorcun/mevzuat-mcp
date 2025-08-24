@@ -381,6 +381,81 @@ async def flowise_actions_endpoint():
         "version": "1.0.0"
     }
 
+@app.get("/.well-known/mcp")
+async def well_known_mcp():
+    """Standard MCP discovery endpoint"""
+    return {
+        "name": "Mevzuat MCP",
+        "version": "1.0.0",
+        "description": "Turkish Legislation MCP Server",
+        "protocols": {
+            "mcp": {
+                "version": "2024-11-05",
+                "endpoints": {
+                    "server": "/mcp"
+                }
+            }
+        },
+        "capabilities": {
+            "tools": {
+                "listChanged": True
+            }
+        }
+    }
+
+@app.get("/mcp/discovery")
+async def mcp_discovery():
+    """MCP Discovery endpoint for ChatGPT and other MCP clients"""
+    return {
+        "name": "Mevzuat MCP",
+        "version": "1.0.0",
+        "description": "Turkish Legislation MCP Server",
+        "protocols": {
+            "mcp": {
+                "version": "2024-11-05",
+                "endpoints": {
+                    "server": "/mcp"
+                }
+            }
+        },
+        "capabilities": {
+            "tools": {
+                "listChanged": True
+            }
+        }
+    }
+
+@app.get("/status")
+async def status():
+    """Status endpoint with detailed information"""
+    return {
+        "status": "healthy",
+        "server": "Mevzuat MCP",
+        "version": "1.0.0",
+        "timestamp": datetime.now().isoformat(),
+        "uptime_seconds": (datetime.now() - SERVER_START_TIME).total_seconds(),
+        "tools_count": len(MCP_TOOLS),
+        "endpoints": {
+            "mcp": "/mcp",
+            "discovery": "/mcp/discovery",
+            "well_known": "/.well-known/mcp",
+            "health": "/health",
+            "tools": "/mcp/tools",
+            "actions": "/mcp/actions",
+            "flowise_actions": "/mcp/flowise-actions"
+        }
+    }
+
+@app.get("/debug/test")
+async def debug_test():
+    """Debug endpoint to test if FastAPI routes work"""
+    return {
+        "message": "Debug test successful",
+        "timestamp": datetime.now().isoformat(),
+        "server": "Mevzuat MCP",
+        "version": "1.0.0"
+    }
+
 @app.post("/mcp")
 async def mcp_endpoint(
     request: Request,
