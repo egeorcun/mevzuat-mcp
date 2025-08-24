@@ -255,12 +255,17 @@ async def mcp_endpoint(
         
         # Handle different MCP methods
         if mcp_request.method == "tools/list":
-            return await handle_list_tools(mcp_request)
+            result = await handle_list_tools(mcp_request)
+            logger.info(f"Tools list response: {len(result.result.get('tools', []))} tools")
+            return result
         elif mcp_request.method == "tools/call":
             return await handle_call_tool(mcp_request)
         elif mcp_request.method == "initialize":
-            return await handle_initialize(mcp_request)
+            result = await handle_initialize(mcp_request)
+            logger.info("Initialize response sent")
+            return result
         else:
+            logger.warning(f"Unknown method: {mcp_request.method}")
             return MCPResponse(
                 id=mcp_request.id,
                 error={
@@ -286,7 +291,9 @@ async def handle_initialize(request: MCPRequest) -> MCPResponse:
         result={
             "protocolVersion": "2024-11-05",
             "capabilities": {
-                "tools": {}
+                "tools": {
+                    "listChanged": True
+                }
             },
             "serverInfo": {
                 "name": "MevzuatGovTrMCP",
