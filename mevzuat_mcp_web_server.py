@@ -360,6 +360,27 @@ async def list_actions_endpoint():
     
     return actions
 
+@app.get("/mcp/flowise-actions")
+async def flowise_actions_endpoint():
+    """Special endpoint for Flowise Custom MCP Tool"""
+    actions = []
+    for tool_name, tool_def in MCP_TOOLS.items():
+        actions.append({
+            "label": tool_def["description"],
+            "name": tool_def["name"],
+            "type": "string",
+            "required": True,
+            "description": tool_def["description"],
+            "inputSchema": tool_def["inputSchema"]
+        })
+    
+    return {
+        "actions": actions,
+        "count": len(actions),
+        "server": "Mevzuat MCP",
+        "version": "1.0.0"
+    }
+
 @app.post("/mcp")
 async def mcp_endpoint(
     request: Request,
@@ -458,13 +479,19 @@ async def handle_list_actions(request: MCPRequest) -> MCPResponse:
                 "name": tool_def["name"],
                 "type": "string",
                 "required": True,
-                "description": tool_def["description"]
+                "description": tool_def["description"],
+                "inputSchema": tool_def["inputSchema"]
             })
         
         logger.info(f"Returning {len(actions)} actions for Flowise")
         return MCPResponse(
             id=request.id,
-            result={"actions": actions}
+            result={
+                "actions": actions,
+                "count": len(actions),
+                "server": "Mevzuat MCP",
+                "version": "1.0.0"
+            }
         )
     except Exception as e:
         logger.error(f"Error listing actions: {e}")
