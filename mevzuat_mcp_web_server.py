@@ -247,6 +247,23 @@ async def mcp_get_endpoint():
         "endpoint": "POST /mcp for MCP requests"
     }
 
+@app.get("/mcp/tools")
+async def list_tools_endpoint():
+    """GET endpoint to list all available MCP tools"""
+    tools = []
+    for tool_name, tool_def in MCP_TOOLS.items():
+        tools.append({
+            "name": tool_def["name"],
+            "description": tool_def["description"],
+            "inputSchema": tool_def["inputSchema"]
+        })
+    
+    return {
+        "message": "Available MCP Tools",
+        "count": len(tools),
+        "tools": tools
+    }
+
 @app.post("/mcp")
 async def mcp_endpoint(
     request: Request,
