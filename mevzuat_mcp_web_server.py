@@ -264,6 +264,21 @@ async def list_tools_endpoint():
         "tools": tools
     }
 
+@app.get("/mcp/actions")
+async def list_actions_endpoint():
+    """GET endpoint for Flowise to list available actions"""
+    actions = []
+    for tool_name, tool_def in MCP_TOOLS.items():
+        actions.append({
+            "label": tool_def["description"],
+            "name": tool_def["name"],
+            "type": "string",
+            "required": True,
+            "description": tool_def["description"]
+        })
+    
+    return actions
+
 @app.post("/mcp")
 async def mcp_endpoint(
     request: Request,
