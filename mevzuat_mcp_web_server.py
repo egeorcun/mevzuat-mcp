@@ -118,15 +118,15 @@ async def verify_api_key(
             detail="Invalid API key"
         )
     
-    # Check origin (only allow Flowise)
-    if origin != FLOWISE_ORIGIN:
+    # Check origin (allow Flowise or None for MCP clients)
+    if origin and origin != FLOWISE_ORIGIN:
         logger.warning(f"Unauthorized origin attempt: {origin}")
         raise HTTPException(
             status_code=403,
             detail="Unauthorized origin"
         )
     
-    logger.info(f"Authenticated request from: {origin}")
+    logger.info(f"Authenticated request from: {origin or 'MCP Client'}")
     return True
 
 # MCP Protocol Models
