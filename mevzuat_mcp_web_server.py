@@ -11,9 +11,10 @@ import json
 from contextlib import asynccontextmanager
 from typing import Optional, List, Dict, Any, Union
 
-from fastapi import FastAPI, HTTPException, Request, Response
+from fastapi import FastAPI, HTTPException, Request, Response, Depends, Header
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 
 # Import configuration
@@ -48,6 +49,13 @@ logger = logging.getLogger(__name__)
 # Global client instance
 mevzuat_client: Optional[MevzuatApiClient] = None
 
+# Security configuration
+API_KEY = os.getenv("MCP_API_KEY", "your-secret-api-key-here")
+FLOWISE_ORIGIN = "https://flowise.software.vision"
+
+# HTTP Bearer token security
+security = HTTPBearer()
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
@@ -60,6 +68,7 @@ async def lifespan(app: FastAPI):
     logger.info("Starting Mevzuat MCP Web Server...")
     logger.info(f"Environment: {settings.environment}")
     logger.info(f"Debug mode: {settings.debug}")
+    logger.info(f"API Key configured: {'Yes' if API_KEY != 'your-secret-api-key-here' else 'No (using default)'}")
     
     mevzuat_client = MevzuatApiClient(timeout=settings.api_timeout)
     
@@ -84,14 +93,41 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware for web client access
+# Add CORS middleware for web client access - only allow Flowise
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=[FLOWISE_ORIGIN],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Security dependency
+async def verify_api_key(
+    authorization: HTTPAuthorizationCredentials = Depends(security),
+    origin: Optional[str] = Header(None)
+) -> bool:
+    """
+    Verify API key and origin for security
+    """
+    # Check API key
+    if authorization.credentials != API_KEY:
+        logger.warning(f"Invalid API key attempt from origin: {origin}")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid API key"
+        )
+    
+    # Check origin (only allow Flowise)
+    if origin != FLOWISE_ORIGIN:
+        logger.warning(f"Unauthorized origin attempt: {origin}")
+        raise HTTPException(
+            status_code=403,
+            detail="Unauthorized origin"
+        )
+    
+    logger.info(f"Authenticated request from: {origin}")
+    return True
 
 # MCP Protocol Models
 class MCPRequest(BaseModel):
@@ -189,7 +225,7 @@ MCP_TOOLS = {
 @app.get("/")
 async def root():
     """Root endpoint"""
-    return {"message": "Mevzuat MCP Web Server", "version": "1.0.0"}
+    return {"message": "Mevzuat MCP Web Server", "version": "1.0.0", "secure": True}
 
 @app.get("/health")
 async def health_check():
@@ -197,20 +233,25 @@ async def health_check():
     return {
         "status": "healthy",
         "message": "Mevzuat MCP Web Server is running",
+        "secure": True,
         "timestamp": asyncio.get_event_loop().time()
     }
 
 @app.post("/mcp")
-async def mcp_endpoint(request: Request):
+async def mcp_endpoint(
+    request: Request,
+    authenticated: bool = Depends(verify_api_key)
+):
     """
     Main MCP endpoint that handles all MCP protocol requests
+    Requires API key authentication and Flowise origin
     """
     try:
         # Parse the request body
         body = await request.json()
         mcp_request = MCPRequest(**body)
         
-        logger.info(f"MCP Request: {mcp_request.method}")
+        logger.info(f"Authenticated MCP Request: {mcp_request.method}")
         
         # Handle different MCP methods
         if mcp_request.method == "tools/list":
